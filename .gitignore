@@ -36,6 +36,13 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# Android local SDK (optional local install)
+.android-sdk/
+
+# Gradle / Android build cache
+android/.gradle/
+android/app/build/
+android/build/
+
+# Built APK (lokal unter releases/ oder via GitHub Release)
+releases/*.apk
