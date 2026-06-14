@@ -12,7 +12,9 @@ Trainiere das Merken und Eingeben von 6-stelligen Authentifizierungscodes.
 
 ## APK herunterladen
 
-Die fertige Release-APK liegt unter:
+**GitHub Release:** [v1.0.0 APK herunterladen](https://github.com/leonard-roepcke/auth-code-learn-app/releases/download/v1.0.0/auth-code-learn-app-v1.0.0.apk)
+
+Lokal liegt die APK unter:
 
 `releases/auth-code-learn-app-v1.0.0.apk`
 
