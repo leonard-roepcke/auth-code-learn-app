@@ -20,7 +20,6 @@ import { loadStats, saveCorrectAttempt, saveWrongAttempt, type Stats } from './s
 type Result = 'correct' | 'wrong' | null;
 
 const CODE_LENGTH = 6;
-const MEMORIZE_SECONDS = 5;
 
 export default function App() {
   const insets = useSafeAreaInsets();
@@ -30,9 +29,7 @@ export default function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [ready, setReady] = useState(false);
   const [isCodeVisible, setIsCodeVisible] = useState(true);
-  const [secondsLeft, setSecondsLeft] = useState(MEMORIZE_SECONDS);
   const inputRef = useRef<TextInput>(null);
-  const roundRef = useRef(0);
 
   useEffect(() => {
     loadStats()
@@ -40,51 +37,32 @@ export default function App() {
       .finally(() => setReady(true));
   }, []);
 
-  const startMemorizePhase = useCallback(() => {
-    roundRef.current += 1;
-    const round = roundRef.current;
-
-    setIsCodeVisible(true);
-    setSecondsLeft(MEMORIZE_SECONDS);
+  const dismissKeyboard = useCallback(() => {
     Keyboard.dismiss();
     inputRef.current?.blur();
-
-    const interval = setInterval(() => {
-      setSecondsLeft((current) => {
-        if (current <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return current - 1;
-      });
-    }, 1000);
-
-    const timeout = setTimeout(() => {
-      if (roundRef.current !== round) {
-        return;
-      }
-      setIsCodeVisible(false);
-      inputRef.current?.focus();
-    }, MEMORIZE_SECONDS * 1000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
   }, []);
 
-  useEffect(() => {
-    if (!ready) {
+  const startEntering = useCallback(() => {
+    if (result !== null) {
       return;
     }
-    return startMemorizePhase();
-  }, [code, ready, startMemorizePhase]);
+    setIsCodeVisible(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [result]);
 
   const startNextRound = useCallback(() => {
     setCode(generateCode());
     setInput('');
     setResult(null);
-  }, []);
+    setIsCodeVisible(true);
+    dismissKeyboard();
+  }, [dismissKeyboard]);
+
+  useEffect(() => {
+    if (isCodeVisible && result === null) {
+      dismissKeyboard();
+    }
+  }, [code, dismissKeyboard, isCodeVisible, result]);
 
   const canEnter = !isCodeVisible && result === null;
 
@@ -98,15 +76,15 @@ export default function App() {
       const nextStats = await saveCorrectAttempt(stats);
       setStats(nextStats);
       setResult('correct');
-      Keyboard.dismiss();
+      dismissKeyboard();
     } else {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const nextStats = await saveWrongAttempt(stats);
       setStats(nextStats);
       setResult('wrong');
-      Keyboard.dismiss();
+      dismissKeyboard();
     }
-  }, [canEnter, code, input, stats]);
+  }, [canEnter, code, dismissKeyboard, input, stats]);
 
   useEffect(() => {
     if (canEnter && input.length === CODE_LENGTH && result === null) {
@@ -149,77 +127,66 @@ export default function App() {
           </View>
         </View>
 
-        <View style={[styles.codeCard, !isCodeVisible && styles.codeCardHidden]}>
-          <Text style={styles.codeLabel}>
-            {isCodeVisible ? 'Aktueller Code' : 'Code ausgeblendet'}
-          </Text>
-          {isCodeVisible ? (
-            <>
-              <Text style={styles.codeValue}>{formatCode(code)}</Text>
-              <Text style={styles.countdownText}>
-                Eingabe in {secondsLeft}s möglich
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.codeHiddenValue}>••• •••</Text>
-              <Text style={styles.countdownText}>Jetzt aus dem Gedächtnis eingeben</Text>
-            </>
-          )}
-        </View>
-
-        <View style={[styles.inputSection, !canEnter && styles.inputSectionDisabled]}>
-          <Text style={styles.inputLabel}>
-            {canEnter ? 'Code eingeben' : 'Merke dir den Code…'}
-          </Text>
+        {isCodeVisible ? (
           <Pressable
-            onPress={() => {
-              if (canEnter) {
-                inputRef.current?.focus();
-              }
-            }}
-            style={styles.pinRow}
+            onPress={startEntering}
+            style={({ pressed }) => [styles.codeCard, pressed && styles.codeCardPressed]}
           >
-            {Array.from({ length: CODE_LENGTH }).map((_, index) => {
-              const digit = input[index] ?? '';
-              const filled = digit !== '';
-              const active = canEnter && input.length === index && result === null;
-
-              return (
-                <View
-                  key={index}
-                  style={[
-                    styles.pinCell,
-                    filled && styles.pinCellFilled,
-                    active && styles.pinCellActive,
-                    !canEnter && styles.pinCellDisabled,
-                    result === 'correct' && styles.pinCellSuccess,
-                    result === 'wrong' && styles.pinCellError,
-                  ]}
-                >
-                  <Text style={[styles.pinDigit, !canEnter && styles.pinDigitDisabled]}>{digit}</Text>
-                </View>
-              );
-            })}
+            <Text style={styles.codeLabel}>Aktueller Code</Text>
+            <Text style={styles.codeValue}>{formatCode(code)}</Text>
+            <Text style={styles.hintText}>Tippe auf den Code, wenn du bereit bist</Text>
           </Pressable>
+        ) : (
+          <View style={styles.codeCardHidden}>
+            <Text style={styles.codeLabelHidden}>Code ausgeblendet</Text>
+            <Text style={styles.hintText}>Gib den Code aus dem Gedächtnis ein</Text>
+          </View>
+        )}
 
-          <TextInput
-            ref={inputRef}
-            value={input}
-            editable={canEnter}
-            showSoftInputOnFocus={canEnter}
-            onChangeText={(value) => {
-              if (!canEnter || result !== null) {
-                return;
-              }
-              setInput(value.replace(/\D/g, '').slice(0, CODE_LENGTH));
-            }}
-            keyboardType="number-pad"
-            maxLength={CODE_LENGTH}
-            style={styles.hiddenInput}
-            caretHidden
-          />
-        </View>
+        {!isCodeVisible && (
+          <View style={styles.inputSection}>
+            <Text style={styles.inputLabel}>Code eingeben</Text>
+            <Pressable onPress={() => inputRef.current?.focus()} style={styles.pinRow}>
+              {Array.from({ length: CODE_LENGTH }).map((_, index) => {
+                const digit = input[index] ?? '';
+                const filled = digit !== '';
+                const active = canEnter && input.length === index && result === null;
+
+                return (
+                  <View
+                    key={index}
+                    style={[
+                      styles.pinCell,
+                      filled && styles.pinCellFilled,
+                      active && styles.pinCellActive,
+                      result === 'correct' && styles.pinCellSuccess,
+                      result === 'wrong' && styles.pinCellError,
+                    ]}
+                  >
+                    <Text style={styles.pinDigit}>{digit}</Text>
+                  </View>
+                );
+              })}
+            </Pressable>
+
+            <TextInput
+              ref={inputRef}
+              value={input}
+              editable={canEnter}
+              showSoftInputOnFocus={canEnter}
+              onChangeText={(value) => {
+                if (!canEnter || result !== null) {
+                  return;
+                }
+                setInput(value.replace(/\D/g, '').slice(0, CODE_LENGTH));
+              }}
+              keyboardType="number-pad"
+              maxLength={CODE_LENGTH}
+              style={styles.hiddenInput}
+              caretHidden
+            />
+          </View>
+        )}
 
         {result && (
           <View
@@ -312,12 +279,28 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(56, 189, 248, 0.35)',
     gap: 8,
   },
+  codeCardPressed: {
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    borderColor: 'rgba(56, 189, 248, 0.55)',
+  },
   codeCardHidden: {
     backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    borderRadius: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    borderWidth: 1,
     borderColor: 'rgba(148, 163, 184, 0.25)',
+    gap: 8,
   },
   codeLabel: {
     color: '#7dd3fc',
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  codeLabelHidden: {
+    color: '#94a3b8',
     fontSize: 14,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -329,22 +312,14 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
     fontVariant: ['tabular-nums'],
   },
-  codeHiddenValue: {
-    color: '#64748b',
-    fontSize: 48,
-    fontWeight: '700',
-    letterSpacing: 6,
-  },
-  countdownText: {
+  hintText: {
     color: '#94a3b8',
     fontSize: 14,
     marginTop: 4,
+    textAlign: 'center',
   },
   inputSection: {
     gap: 12,
-  },
-  inputSectionDisabled: {
-    opacity: 0.55,
   },
   inputLabel: {
     color: '#cbd5e1',
@@ -373,10 +348,6 @@ const styles = StyleSheet.create({
   pinCellActive: {
     borderColor: '#f8fafc',
   },
-  pinCellDisabled: {
-    borderColor: 'rgba(148, 163, 184, 0.2)',
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
-  },
   pinCellSuccess: {
     borderColor: '#4ade80',
     backgroundColor: 'rgba(74, 222, 128, 0.12)',
@@ -389,9 +360,6 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     fontSize: 24,
     fontWeight: '700',
-  },
-  pinDigitDisabled: {
-    color: '#64748b',
   },
   hiddenInput: {
     position: 'absolute',
